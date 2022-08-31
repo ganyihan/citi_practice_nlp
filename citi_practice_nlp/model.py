@@ -188,7 +188,7 @@ HIDDEN_DIM = 4  # 这其实是BiLSTM的隐藏层的特征数量，因为是双�
 
 # Make up some training data 每一个句子对应的词性都有正确的标签
 # 1.1 读取文件，修改标签
-with open('data/test.json', 'r') as obj:
+with open('data/test1.json', 'r') as obj:
     pre_data = json.load(obj)
 
 # test_data = []
@@ -228,12 +228,15 @@ with torch.no_grad():
     print(model(precheck_sent))
 # We got it!
 
-data = {}
+
+f = open('./data/result.txt','a')
 for sentence in training_data:
     sentence_in = prepare_sequence(sentence, word_to_ix)
     result = model(sentence_in)
     result = result[1]
     print('=========================================')
+    f.write('=========================================\n')
+    data = {}
     print(sentence)
     for i in range(len(result)):
         if result[i] >0 and result[i] <4:
@@ -242,5 +245,9 @@ for sentence in training_data:
             else:
                 data[ix_to_tag[result[i]]] = sentence[i]
             print(ix_to_tag[result[i]] + ' is : ' + sentence[i])
+    f.write(json.dumps(data))
+    f.write('\n')
     print('=========================================')
-    print(json.dumps(data))
+    f.write('=========================================\n')
+f.close()
+    # print(json.dumps(data))
