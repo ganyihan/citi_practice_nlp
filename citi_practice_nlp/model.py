@@ -2,6 +2,7 @@ from flask import Flask,render_template,request,jsonify
 from flask_cors import cross_origin
 import json
 import random
+from decimal import Decimal
 
 import numpy as np
 
@@ -201,8 +202,6 @@ app = Flask(__name__)
 
 def submit():
     pre_data = request.form
-    # pre_data = json.dumps(pre_data)
-
     pre_data = json.dumps(pre_data)
     pre_data_1 = json.loads(pre_data)
     pre_data = []
@@ -212,7 +211,6 @@ def submit():
     for sentence_dict in pre_data:
         text = sentence_dict['text'].split()
         training_data.append(text)
-
     model = BiLSTM_CRF(len(word_to_ix), tag_to_ix, EMBEDDING_DIM, HIDDEN_DIM)
     model.load_state_dict(torch.load('model_parameter.pkl'))
     with torch.no_grad():
@@ -223,24 +221,47 @@ def submit():
         result = model(sentence_in)
         result = result[1]
         print('=========================================')
-        # f.write('=========================================\n')
         data = {}
         print(sentence)
         for i in range(len(result)):
             if result[i] > 0 and result[i] < 4:
+
                 if (data.__contains__(ix_to_tag[result[i]])):
                     data[ix_to_tag[result[i]]] += " " + sentence[i]
                 else:
-                    data[ix_to_tag[result[i]]] = sentence[i]
+                    if(ix_to_tag[result[i]] == "NOTIONAL"):
+                        numbers = sentence[i]
+                        size = int(0)
+                        try:
+                            if("hundred" in numbers):
+                                number = numbers.split("h")
+                                size = int(Decimal(number[0])*Decimal('100'))
+                            elif ("thousand" in numbers):
+                                number = numbers.split("t")
+                                size = int(Decimal(number[0])*Decimal('1000'))
+                            elif ("million" in numbers):
+                                number = numbers.split("m")
+                                size = int(Decimal(number[0])*Decimal('1000000'))
+                            elif ("billion" in numbers):
+                                number = numbers.split("b")
+                                size = int(Decimal(number[0])*Decimal('1000000000'))
+                            else:
+                                size = int(Decimal(numbers))
+                        except:
+                            pass
+                        data["Size"] = size
+                    else:
+                        data[ix_to_tag[result[i]]] = sentence[i]
                 print(ix_to_tag[result[i]] + ' is : ' + sentence[i])
-        # f.write(json.dumps(data))
-        # f.write('\n')
         print('=========================================')
+        text = pre_data_1['text']
+        if ('Buy' in text):
+            data.update({'action':'Buy'})
+        elif ('Sell' in text):
+            data.update({'action':'Sell'})
+        else:
+            data.update({'action':'None'})
         return json.dumps(data)
-        # f.write('=========================================\n')
-
-    print(text)
-    return {'text':text}
 
 app.run(port=8081)
 
