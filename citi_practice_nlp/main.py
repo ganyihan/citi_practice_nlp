@@ -111,7 +111,7 @@ class BiLSTM_CRF(nn.Module):
                 self.transitions[tags[i + 1], tags[i]] + feat[tags[i + 1]]
         score = score + self.transitions[self.tag_to_ix[STOP_TAG], tags[-1]]
         return score
-
+    #序列预测
     def _viterbi_decode(self, feats):
         backpointers = []
 
@@ -155,7 +155,7 @@ class BiLSTM_CRF(nn.Module):
         assert start == self.tag_to_ix[START_TAG]  # Sanity check
         best_path.reverse()
         return path_score, best_path
-
+#极大取相反数作为loss
     def neg_log_likelihood(self, sentence, tags):
         feats = self._get_lstm_features(sentence)
         forward_score = self._forward_alg(feats)
@@ -291,8 +291,8 @@ for epoch in range(
         loss = model.neg_log_likelihood(sentence_in, targets)
         # Step 4. Compute the loss, gradients, and update the parameters by
         # calling optimizer.step()
-        loss.backward()
-        optimizer.step()
+        loss.backward()#反向求导
+        optimizer.step()#参数更新
 
 torch.save(model.state_dict(), 'model_parameter.pkl')
 

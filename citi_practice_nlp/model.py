@@ -25,6 +25,7 @@ def prepare_sequence(seq, to_ix):
 
 
 # Compute log sum exp in a numerically stable way for the forward algorithm
+# 最后return处应用了计算技巧，目的是防止sum后数据过大越界，实际就是对vec应用log_sum_exp
 def log_sum_exp(vec):
     max_score = vec[0, argmax(vec)]
     max_score_broadcast = max_score.view(1, -1).expand(1, vec.size()[1])
@@ -65,6 +66,7 @@ class BiLSTM_CRF(nn.Module):
         return (torch.randn(2, 1, self.hidden_dim // 2),
                 torch.randn(2, 1, self.hidden_dim // 2))
 
+    # 此处基于前向算法，计算输入序列x所有可能的标注序列对应的log_sum_exp
     def _forward_alg(self, feats):
         # Do the forward algorithm to compute the partition function 用正演算法计算配分函数
         init_alphas = torch.full((1, self.tagset_size), -10000.)
@@ -72,26 +74,28 @@ class BiLSTM_CRF(nn.Module):
         init_alphas[0][self.tag_to_ix[START_TAG]] = 0.
 
         # Wrap in a variable so that we will get automatic backprop 包装在一个变量中，这样我们将获得自动backprop
+        # forward_var初值为[-10000.,-10000.,-10000.,0,-10000.] 其数值是非规一化概率或者crf计算中的score，值越小代表越不可能
         forward_var = init_alphas
 
-        # Iterate through the sentence 重复这个句子
+        # Iterate through the sentence 如下遍历一个句子的各个word或者step
         for feat in feats:
             alphas_t = []  # The forward tensors at this timestep 此时的前向张量
             for next_tag in range(self.tagset_size):
                 # broadcast the emission score: it is the same regardless of
-                # the previous tag 广播发射分数：无论前一个标签如何，它都是相同的
+                # the previous tag 对所有tag转移到next_tag而言其对应发射概率相同故直接expand
                 emit_score = feat[next_tag].view(
                     1, -1).expand(1, self.tagset_size)
                 # the ith entry of trans_score is the score of transitioning to
-                # next_tag from i trans_score的第i个条目是从i转换到next_tag的得分
+                # next_tag from i trans_score # 从每一个tag转移到next_tag对应的转移score
                 trans_score = self.transitions[next_tag].view(1, -1)
                 # The ith entry of next_tag_var is the value for the
-                # edge (i -> next_tag) before we do log-sum-exp
+                # edge (i -> next_tag) before we do log-sum-exp如下加法是三个向量相加，相同槽位的数值直接相加即可
                 next_tag_var = forward_var + trans_score + emit_score
                 # The forward variable for this tag is log-sum-exp of all the
                 # scores.
-                alphas_t.append(log_sum_exp(next_tag_var).view(1))
-            forward_var = torch.cat(alphas_t).view(1, -1)
+                alphas_t.append(log_sum_exp(next_tag_var).view(1)) # 此处相当于LSE(t,next_tag)
+            forward_var = torch.cat(alphas_t).view(1, -1)# 此处生成完整的LSE(t),其size=1*tag_size
+            # 最后再走一步，代表序列结束
         terminal_var = forward_var + self.transitions[self.tag_to_ix[STOP_TAG]]
         alpha = log_sum_exp(terminal_var)
         return alpha
@@ -158,6 +162,7 @@ class BiLSTM_CRF(nn.Module):
         best_path.reverse()
         return path_score, best_path
 
+    # 极大取相反数作为loss
     def neg_log_likelihood(self, sentence, tags):
         feats = self._get_lstm_features(sentence)
         forward_score = self._forward_alg(feats)
