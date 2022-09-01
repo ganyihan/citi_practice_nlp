@@ -1,3 +1,5 @@
+from flask import Flask,render_template,request,jsonify
+from flask_cors import cross_origin
 import json
 import random
 
@@ -9,7 +11,6 @@ import torch.nn as nn
 import torch.optim as optim
 
 torch.manual_seed(1)
-
 def argmax(vec):
     # return the argmax as a python int
     # 得到最大的值的索引
@@ -186,68 +187,61 @@ STOP_TAG = "<STOP>"
 EMBEDDING_DIM = 6  # 由于标签一共有NAME NOTIONAL 和 TICKER WORD START STOP 6个，所以embedding_dim为6
 HIDDEN_DIM = 4  # 这其实是BiLSTM的隐藏层的特征数量，因为是双向所以是2倍，单向为2
 
-# Make up some training data 每一个句子对应的词性都有正确的标签
-# 1.1 读取文件，修改标签
-with open('data/test1.json', 'r') as obj:
-    pre_data = json.load(obj)
 
-# test_data = []
-# for sentence_dict in pre_data:
-#     text = {"text": sentence_dict['text']}
-#     test_data.append(text)
-#
-# with open('test.json', 'w') as f:
-#     json.dump(test_data, f)
-
-
-training_data = []
-for sentence_dict in pre_data:
-    text = sentence_dict['text'].split()
-    training_data.append(text)
-
-#处理数据集中句子的词，不重复的将句子中的词拿出来并标号
-#设置一个word_to_ix存储句子中每一个单词
-#拿出每一个句子跟其对应的标签，用sentence与tag循环每一个句子
-#比如第0次抽出来的就是第一个句子"the wall …money"，与他的标签"B I I …0"。
-#现在只存储出现过的单词(不管标签)
-
-# 读取词库
 with open('ciku.json', 'r') as obj:
     word_to_ix = json.load(obj)
 
 #将5个标签存到tag_to_ix的字典中
 tag_to_ix = {"WORD": 0, "NAME": 1, "NOTIONAL": 2, "TICKER": 3, START_TAG: 4, STOP_TAG: 5}
 ix_to_tag = {0: "WORD", 1: "NAME", 2: "NOTIONAL", 3: "TICKER", 4: START_TAG, 5: STOP_TAG}
+app = Flask(__name__)
 
-#将句子输入到BILSTM-CRF模型
-model = BiLSTM_CRF(len(word_to_ix), tag_to_ix, EMBEDDING_DIM, HIDDEN_DIM)
-model.load_state_dict(torch.load('model_parameter.pkl'))
+@app.route("/submit",methods=["POST"])
+@cross_origin(supports_credentials=True)
 
-with torch.no_grad():
-    precheck_sent = prepare_sequence(training_data[0], word_to_ix)
-    print(model(precheck_sent))
-# We got it!
+def submit():
+    pre_data = request.form
+    # pre_data = json.dumps(pre_data)
+
+    pre_data = json.dumps(pre_data)
+    pre_data_1 = json.loads(pre_data)
+    pre_data = []
+    pre_data.append(pre_data_1)
+    print(pre_data)
+    training_data = []
+    for sentence_dict in pre_data:
+        text = sentence_dict['text'].split()
+        training_data.append(text)
+
+    model = BiLSTM_CRF(len(word_to_ix), tag_to_ix, EMBEDDING_DIM, HIDDEN_DIM)
+    model.load_state_dict(torch.load('model_parameter.pkl'))
+    with torch.no_grad():
+        precheck_sent = prepare_sequence(training_data[0], word_to_ix)
+        print(model(precheck_sent))
+    for sentence in training_data:
+        sentence_in = prepare_sequence(sentence, word_to_ix)
+        result = model(sentence_in)
+        result = result[1]
+        print('=========================================')
+        # f.write('=========================================\n')
+        data = {}
+        print(sentence)
+        for i in range(len(result)):
+            if result[i] > 0 and result[i] < 4:
+                if (data.__contains__(ix_to_tag[result[i]])):
+                    data[ix_to_tag[result[i]]] += " " + sentence[i]
+                else:
+                    data[ix_to_tag[result[i]]] = sentence[i]
+                print(ix_to_tag[result[i]] + ' is : ' + sentence[i])
+        # f.write(json.dumps(data))
+        # f.write('\n')
+        print('=========================================')
+        return json.dumps(data)
+        # f.write('=========================================\n')
+
+    print(text)
+    return {'text':text}
+
+app.run(port=8081)
 
 
-f = open('./data/result.txt','a')
-for sentence in training_data:
-    sentence_in = prepare_sequence(sentence, word_to_ix)
-    result = model(sentence_in)
-    result = result[1]
-    print('=========================================')
-    f.write('=========================================\n')
-    data = {}
-    print(sentence)
-    for i in range(len(result)):
-        if result[i] >0 and result[i] <4:
-            if(data.__contains__(ix_to_tag[result[i]])):
-                data[ix_to_tag[result[i]]] += " " + sentence[i]
-            else:
-                data[ix_to_tag[result[i]]] = sentence[i]
-            print(ix_to_tag[result[i]] + ' is : ' + sentence[i])
-    f.write(json.dumps(data))
-    f.write('\n')
-    print('=========================================')
-    f.write('=========================================\n')
-f.close()
-    # print(json.dumps(data))
